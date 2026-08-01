@@ -59,13 +59,13 @@ All limits are overridable at compile time with `-D`:
 | Flag | Default | Description |
 |------|---------|-------------|
 | `TB_BURST` | 20 | Max burst packets per IP |
-| `TB_REFILL_NS` | 5000000 | Token refill interval (ns) — 5ms = 200pps cap |
+| `TB_REFILL_NS` | 5000000 | Token refill interval (ns) - 5ms = 200pps cap |
 | `SYN_RATE_NS` | 100000000 | Min gap between SYNs per IP (100ms) |
 | `ICMP_RATE_NS` | 1000000000 | Min gap between ICMP per IP (1s) |
-| `AMP_LIMIT` | 512 | Bytes — larger UDP from amp ports gets dropped |
+| `AMP_LIMIT` | 512 | Bytes - larger UDP from amp ports gets dropped |
 | `FLOW_IDLE_NS` | 120000000000 | TCP flow idle timeout (120s) |
 
-Example — tighten the rate limit to 100pps:
+Example - tighten the rate limit to 100pps:
 ```bash
 clang -O2 -target bpf -DTB_REFILL_NS=10000000 -c filter.c -o filter.o
 ```
