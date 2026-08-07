@@ -18,9 +18,14 @@ LDLIBS     := -lbpf -lelf -lz
 BPF_OBJ    := $(BUILD)/filter.bpf.o
 CTL        := $(BUILD)/fivemctl
 
-.PHONY: all clean install uninstall verify check-deps
+.PHONY: all clean install uninstall verify check-deps test
 
 all: $(BPF_OBJ) $(CTL)
+
+# Unit tests for the pure-arithmetic parts, runnable without root or a kernel.
+test: | $(BUILD)
+	$(CC) $(CFLAGS) tests/test_bogon.c -o $(BUILD)/test_bogon
+	@$(BUILD)/test_bogon
 
 $(BUILD):
 	@mkdir -p $(BUILD)

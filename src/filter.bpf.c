@@ -20,6 +20,7 @@
 #include <bpf/bpf_endian.h>
 
 #include "common.h"
+#include "bogon.h"
 
 /*
  * Per-source state lives in a fixed, hashed array rather than an LRU hash.
@@ -249,31 +250,6 @@ static __always_inline bool ff_addr_eq(const struct ff_addr *x,
 {
 	return x->a[0] == y->a[0] && x->a[1] == y->a[1] &&
 	       x->a[2] == y->a[2] && x->a[3] == y->a[3];
-}
-
-/*
- * Martian / unroutable IPv4 sources. src_h is host byte order.
- * The /24 documentation ranges are compared on a 24-bit shift, which the
- * previous revision got wrong by comparing against the full 32-bit constant.
- */
-static __always_inline bool ff_bogon4(__u32 src_h)
-{
-	if ((src_h >> 24) == 0)			return true;	/* 0.0.0.0/8 */
-	if ((src_h >> 24) == 10)		return true;	/* 10.0.0.0/8 */
-	if ((src_h >> 22) == 0x00019100)	return true;	/* 100.64.0.0/10 */
-	if ((src_h >> 24) == 127)		return true;	/* 127.0.0.0/8 */
-	if ((src_h >> 16) == 0x0000a9fe)	return true;	/* 169.254.0.0/16 */
-	if ((src_h >> 20) == 0x00000ac1)	return true;	/* 172.16.0.0/12 */
-	if ((src_h >> 24) == 192 &&
-	    ((src_h >> 8) & 0xffff) == 0x0000)	return true;	/* 192.0.0.0/24 */
-	if ((src_h >> 8)  == 0x00c00002)	return true;	/* 192.0.2.0/24 */
-	if ((src_h >> 16) == 0x0000c0a8)	return true;	/* 192.168.0.0/16 */
-	if ((src_h >> 17) == 0x00063090)	return true;	/* 198.18.0.0/15 */
-	if ((src_h >> 8)  == 0x00c63364)	return true;	/* 198.51.100.0/24 */
-	if ((src_h >> 8)  == 0x00cb0071)	return true;	/* 203.0.113.0/24 */
-	if ((src_h >> 28) == 0xe)		return true;	/* 224.0.0.0/4 */
-	if ((src_h >> 28) == 0xf)		return true;	/* 240.0.0.0/4 + bcast */
-	return false;
 }
 
 /* Operates on the stored /64 prefix, which is all we keep of a v6 source. */
