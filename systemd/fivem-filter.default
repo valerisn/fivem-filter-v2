@@ -1,0 +1,18 @@
+# Install to /etc/default/fivem-filter
+
+# Interface the server's traffic arrives on.
+FF_IFACE=eth0
+
+# Public IPv4 of the server. Required: without it the filter applies to every
+# destination on the interface.
+FF_IP=203.0.113.10
+
+# FiveM game port (UDP + TCP).
+FF_PORT=30120
+
+# Anything else you want on the command line. Start with dry-run, watch
+# `fivemctl stats` for a day, then remove it.
+#   --aux-port 40120     txAdmin
+#   --on dry-run         count drops without taking them
+#   --pps 400            raise the per-source ceiling
+FF_EXTRA=--on dry-run

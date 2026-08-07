@@ -29,9 +29,22 @@
 
 #include "common.h"
 
-#ifndef FF_DEFAULT_OBJ
-#define FF_DEFAULT_OBJ "filter.bpf.o"
-#endif
+/* Searched in order when --obj is not given, so the tool works the same from
+ * a build tree and from an install prefix. */
+static const char *const obj_search[] = {
+	"build/filter.bpf.o",
+	"./filter.bpf.o",
+	"/usr/local/lib/fivem-xdp-filter/filter.bpf.o",
+	"/usr/lib/fivem-xdp-filter/filter.bpf.o",
+};
+
+static const char *find_obj(void)
+{
+	for (size_t i = 0; i < sizeof(obj_search) / sizeof(obj_search[0]); i++)
+		if (!access(obj_search[i], R_OK))
+			return obj_search[i];
+	return NULL;
+}
 
 static const char *const pinned_maps[] = {
 	"config", "state", "global", "allowlist", "blocklist",
@@ -417,6 +430,16 @@ static void config_print(const struct ff_config *cfg)
 
 /* ------------------------------------------------------------------ load */
 
+/* Kernels before 5.11 charge map memory against RLIMIT_MEMLOCK, and the state
+ * table alone is 8 MiB. libbpf raises this itself on new enough versions;
+ * doing it unconditionally costs nothing. */
+static void raise_memlock(void)
+{
+	struct rlimit r = { RLIM_INFINITY, RLIM_INFINITY };
+
+	setrlimit(RLIMIT_MEMLOCK, &r);
+}
+
 static void ensure_pin_dir(void)
 {
 	if (mkdir(FF_PIN_DIR, 0700) && errno != EEXIST)
@@ -427,7 +450,7 @@ static void ensure_pin_dir(void)
 static int cmd_load(int argc, char **argv)
 {
 	struct ff_config cfg;
-	struct tune_state ts = { .obj = FF_DEFAULT_OBJ, .grace_sec = 30 };
+	struct tune_state ts = { .grace_sec = 30 };
 	struct bpf_object *obj;
 	struct bpf_program *prog;
 	struct bpf_map *map;
@@ -459,6 +482,14 @@ static int cmd_load(int argc, char **argv)
 	cfg.tcp_learn_until_ns = ts.grace_sec
 		? now_ns() + ts.grace_sec * 1000000000ULL : 0;
 
+	if (!ts.obj) {
+		ts.obj = find_obj();
+		if (!ts.obj)
+			die("cannot find filter.bpf.o; build it with `make` or "
+			    "point at it with --obj");
+	}
+
+	raise_memlock();
 	ensure_pin_dir();
 
 	obj = bpf_object__open_file(ts.obj, NULL);

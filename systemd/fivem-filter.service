@@ -1,0 +1,24 @@
+[Unit]
+Description=FiveM XDP packet filter
+Documentation=https://github.com/3lxzd/fivem-xdp-filter
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=/etc/default/fivem-filter
+ExecStart=/usr/local/bin/fivemctl load -i ${FF_IFACE} --ip ${FF_IP} --port ${FF_PORT} ${FF_EXTRA}
+ExecStop=/usr/local/bin/fivemctl unload -i ${FF_IFACE}
+
+# The filter needs to load BPF and change the interface; nothing more.
+AmbientCapabilities=CAP_BPF CAP_NET_ADMIN CAP_SYS_RESOURCE CAP_PERFMON
+CapabilityBoundingSet=CAP_BPF CAP_NET_ADMIN CAP_SYS_RESOURCE CAP_PERFMON
+NoNewPrivileges=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/sys/fs/bpf
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
