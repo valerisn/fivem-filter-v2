@@ -445,12 +445,20 @@ static __always_inline bool ff_global_allow(__u32 slot, __u32 pps, __u64 now)
 	burst = pps;
 	bpf_spin_lock(&b->lock);
 	elapsed = now - b->refill_ns;
-	refill = (elapsed * pps) / 1000000000ULL;
-	if (refill) {
-		b->tokens += refill;
-		if (b->tokens > burst)
-			b->tokens = burst;
+	if (elapsed >= 1000000000ULL) {
+		/* More than a second idle: the bucket is full by definition.
+		 * Short-circuiting also keeps elapsed * pps from overflowing,
+		 * which it would after a few days of uptime. */
+		b->tokens = burst;
 		b->refill_ns = now;
+	} else {
+		refill = (elapsed * pps) / 1000000000ULL;
+		if (refill) {
+			b->tokens += refill;
+			if (b->tokens > burst)
+				b->tokens = burst;
+			b->refill_ns = now;
+		}
 	}
 	if (b->tokens) {
 		b->tokens--;
@@ -463,24 +471,43 @@ static __always_inline bool ff_global_allow(__u32 slot, __u32 pps, __u64 now)
 
 /* ----------------------------------------------------------- list lookups */
 
-static __always_inline struct ff_listent *ff_list_hit(void *exact, void *cidr,
-						      struct ff_pkt *pkt,
-						      __u64 now)
+/*
+ * Exact match first, then an IPv4 longest-prefix match. Expired entries are
+ * removed on sight rather than merely ignored, otherwise a month of TTL'd
+ * bans eventually fills the map and new bans start failing to insert.
+ */
+static __always_inline bool ff_list_hit(void *exact, void *cidr,
+					struct ff_pkt *pkt, __u64 now)
 {
 	struct ff_listent *e = bpf_map_lookup_elem(exact, &pkt->src);
-	struct ff_lpm4 k;
 
-	if (!e && pkt->af == FF_AF_INET) {
+	if (e) {
+		if (e->expires_ns && now > e->expires_ns) {
+			bpf_map_delete_elem(exact, &pkt->src);
+			return false;
+		}
+		__sync_fetch_and_add(&e->hits, 1);
+		return true;
+	}
+
+	if (pkt->af == FF_AF_INET) {
+		struct ff_lpm4 k;
+
 		k.prefixlen = 32;
 		__builtin_memcpy(k.addr, &pkt->src.a[0], 4);
 		e = bpf_map_lookup_elem(cidr, &k);
+		if (e) {
+			if (e->expires_ns && now > e->expires_ns) {
+				/* The trie key must be the stored prefix, not
+				 * the queried /32, so leave expiry of CIDR
+				 * entries to fivemctl. */
+				return false;
+			}
+			__sync_fetch_and_add(&e->hits, 1);
+			return true;
+		}
 	}
-	if (!e)
-		return NULL;
-	if (e->expires_ns && now > e->expires_ns)
-		return NULL;
-	__sync_fetch_and_add(&e->hits, 1);
-	return e;
+	return false;
 }
 
 /* ------------------------------------------------------------- L3 parsing */

@@ -40,9 +40,10 @@ Skipping the dry-run step is how people firewall their own player base.
 - A NIC with native XDP support, otherwise it falls back to generic/skb mode
   automatically. Generic mode still works, just without most of the speed win.
 
-`make check-deps` verifies the toolchain, `make verify` loads the program into
-the kernel and unloads it again so you can confirm it passes the verifier
-without touching a live interface.
+`make check-deps` verifies the toolchain. `make test` runs the unit tests for
+the pure-arithmetic parts, needing neither root nor a kernel. `make verify`
+loads the program into the kernel and unloads it again, so you can confirm it
+passes the verifier without touching a live interface.
 
 ## What it does, in order
 
@@ -248,6 +249,10 @@ server has. `--on drop-oob` removes you from browsers entirely.
 
 - IPv4 CIDR lists only. IPv6 entries are keyed on the /64 prefix, which is the
   right granularity for rate limiting but means you cannot block a single /128.
+- TTLs on exact-match entries expire in-kernel and the entry is deleted on the
+  next packet from that source. TTLs on CIDR entries stop matching on time, but
+  the row is only reaped when you run `fivemctl list`, because a trie lookup
+  gives the kernel no key to delete with.
 - No reassembly. Fragmented traffic beyond the first fragment is dropped, not
   buffered.
 - XDP is ingress only. Nothing here inspects or shapes outbound traffic.

@@ -754,9 +754,18 @@ static void dump_exact(const char *name)
 	close(fd);
 }
 
+/*
+ * The BPF side cannot expire trie entries itself: a lookup is keyed on the
+ * queried /32, not on the stored prefix, so it has no key to delete with.
+ * Listing therefore doubles as the reaper. Expired keys are collected during
+ * the walk and deleted afterwards, since deleting mid-iteration invalidates
+ * the cursor.
+ */
 static void dump_cidr(const char *name)
 {
 	struct ff_lpm4 key = {}, next;
+	struct ff_lpm4 *dead = NULL;
+	size_t ndead = 0, cap = 0;
 	struct ff_listent val;
 	__u64 now = now_ns();
 	int fd = open_pin(name);
@@ -771,16 +780,32 @@ static void dump_cidr(const char *name)
 			continue;
 		memcpy(&a.s_addr, key.addr, 4);
 		snprintf(buf, sizeof(buf), "%s/%u", inet_ntoa(a), key.prefixlen);
-		if (!val.expires_ns)
+		if (!val.expires_ns) {
 			snprintf(ttl, sizeof(ttl), "permanent");
-		else if (val.expires_ns <= now)
+		} else if (val.expires_ns <= now) {
 			snprintf(ttl, sizeof(ttl), "expired");
-		else
+			if (ndead == cap) {
+				cap = cap ? cap * 2 : 64;
+				dead = realloc(dead, cap * sizeof(*dead));
+				if (!dead)
+					die("out of memory");
+			}
+			dead[ndead++] = key;
+		} else {
 			snprintf(ttl, sizeof(ttl), "%llus left",
 				 (val.expires_ns - now) / 1000000000ULL);
+		}
 		printf("  %-46s %-14s %llu hits\n", buf, ttl, val.hits);
 		any = true;
 	}
+
+	for (size_t i = 0; i < ndead; i++)
+		bpf_map_delete_elem(fd, &dead[i]);
+	if (ndead)
+		printf("  (reaped %zu expired entr%s)\n", ndead,
+		       ndead == 1 ? "y" : "ies");
+	free(dead);
+
 	if (!any)
 		printf("  (empty)\n");
 	close(fd);
