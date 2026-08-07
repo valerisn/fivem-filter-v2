@@ -386,20 +386,20 @@ static __always_inline __u32 ff_source_check(struct ff_config *cfg,
 		s->conn_count = 0;
 	}
 
-	if (checks & FF_CHK_TOKENS) {
+	/* A zero refill interval means "no per-source ceiling", not "no tokens
+	 * ever" - the latter would drop every packet on the interface. */
+	if ((checks & FF_CHK_TOKENS) && cfg->tb_refill_ns) {
 		elapsed = now - s->refill_ns;
-		if (cfg->tb_refill_ns) {
-			refill = elapsed / cfg->tb_refill_ns;
-			/* Clamp before the add - a long-idle source used to
-			 * overflow tokens back around to near zero. */
-			if (refill > cfg->tb_burst)
-				refill = cfg->tb_burst;
-			if (refill) {
-				s->tokens += (__u32)refill;
-				if (s->tokens > cfg->tb_burst)
-					s->tokens = cfg->tb_burst;
-				s->refill_ns = now;
-			}
+		refill = elapsed / cfg->tb_refill_ns;
+		/* Clamp before the add: a long-idle source otherwise overflows
+		 * the u32 token count and wraps back around to near zero. */
+		if (refill > cfg->tb_burst)
+			refill = cfg->tb_burst;
+		if (refill) {
+			s->tokens += (__u32)refill;
+			if (s->tokens > cfg->tb_burst)
+				s->tokens = cfg->tb_burst;
+			s->refill_ns = now;
 		}
 		if (!s->tokens)
 			reason = FF_STAT_DROP_RATE;
@@ -730,8 +730,12 @@ int fivem_filter(struct xdp_md *ctx)
 			return ff_verdict(cfg, &pkt, FF_STAT_DROP_BOGON);
 	}
 
-	/* Land attack: a packet claiming to come from the address it targets. */
-	if (ff_addr_eq(&pkt.src, &pkt.dst))
+	/*
+	 * Land attack: a packet claiming to come from the address it targets.
+	 * IPv4 only - a v6 key holds just the /64, so any legitimate client
+	 * sharing the server's subnet would otherwise look like a land attack.
+	 */
+	if (pkt.af == FF_AF_INET && ff_addr_eq(&pkt.src, &pkt.dst))
 		return ff_verdict(cfg, &pkt, FF_STAT_DROP_LAND);
 
 	/* Not addressed to the server we protect: leave it alone. */
