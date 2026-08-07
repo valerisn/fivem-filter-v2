@@ -1,0 +1,19 @@
+Copyright (C) 2026 fivem-xdp-filter contributors
+
+SPDX-License-Identifier: GPL-2.0-only
+
+This program is free software; you can redistribute it and/or modify it under
+the terms of the GNU General Public License version 2 as published by the Free
+Software Foundation.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+The BPF program declares a GPL license string because the kernel helpers it
+calls are GPL-only symbols; a non-GPL license string makes the program fail to
+load.
+
+The canonical text of the GNU General Public License version 2 is at
+https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt and should be pasted
+into this file in full before publishing a release.
